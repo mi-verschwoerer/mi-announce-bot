@@ -39,7 +39,7 @@ def get_last_chat_id_and_text(updates):
     last_update = num_updates - 1
     text = updates["result"][last_update]["message"]["text"]
     chat_id = updates["result"][last_update]["message"]["chat"]["id"]
-    return (text, chat_id)
+    return text, chat_id
 
 
 def send_message(text, chat_id):
@@ -55,7 +55,7 @@ def tg_send(text):
 MINKORREKT_RSS='http://minkorrekt.de/feed/'
 
 #main loop
-while (True):
+while True:
     mi_feed = feedparser.parse(MINKORREKT_RSS)
 
     newest_episode = mi_feed['items'][0]
