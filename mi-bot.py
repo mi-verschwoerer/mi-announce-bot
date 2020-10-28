@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import json
-import requests
 import os
-import feedparser
 import urllib
+import feedparser
+import requests
 
 from time import mktime, sleep
 from datetime import datetime as dt
@@ -14,7 +14,8 @@ from datetime import datetime as dt
 TOKEN = os.environ['MIA_TG_TOKEN']
 CHATID = os.environ['MIA_TG_CHATID']
 
-URL = "https://api.telegram.org/bot{}/".format(TOKEN)
+URL = f"https://api.telegram.org/bot{TOKEN}/"
+
 
 def get_url(url):
     response = requests.get(url)
@@ -39,28 +40,32 @@ def get_last_chat_id_and_text(updates):
     last_update = num_updates - 1
     text = updates["result"][last_update]["message"]["text"]
     chat_id = updates["result"][last_update]["message"]["chat"]["id"]
-    return (text, chat_id)
+    return text, chat_id
 
 
 def send_message(text, chat_id):
     text = urllib.parse.quote_plus(text)
-    url = URL + "sendMessage?text={}&chat_id={}&parse_mode=MarkdownV2".format(text, chat_id)
+    url = (f"{URL}sendMessage?text={text}"
+           f"&chat_id={chat_id}"
+           "&parse_mode=MarkdownV2")
     get_url(url)
+
 
 def tg_send(text):
     send_message(text, CHATID)
 
 
+MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
 
-MINKORREKT_RSS='http://minkorrekt.de/feed/'
 
-#main loop
-while (True):
+while True:
     mi_feed = feedparser.parse(MINKORREKT_RSS)
 
     newest_episode = mi_feed['items'][0]
 
     episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed']))
     if (dt.now() - episode_release).total_seconds() < 3600:
-        tg_send('*%s*\nEine neue Folge Methodisch inkorrekt ist erschienen\!\n[Jetzt anhören](%s)' % (newest_episode.title,newest_episode.link))
+        tg_send(f'*{newest_episode.title}*\n'
+                'Eine neue Folge Methodisch inkorrekt ist erschienen!\n'
+                f'[Jetzt anhören]({newest_episode.link})')
     sleep(3595)
