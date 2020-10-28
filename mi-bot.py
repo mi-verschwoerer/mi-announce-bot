@@ -58,7 +58,6 @@ def tg_send(text):
 MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
 
 
-#main loop
 while True:
     mi_feed = feedparser.parse(MINKORREKT_RSS)
 
