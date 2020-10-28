@@ -16,6 +16,7 @@ CHATID = os.environ['MIA_TG_CHATID']
 
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
+
 def get_url(url):
     response = requests.get(url)
     content = response.content.decode("utf8")
@@ -49,12 +50,13 @@ def send_message(text, chat_id):
            "&parse_mode=MarkdownV2")
     get_url(url)
 
+
 def tg_send(text):
     send_message(text, CHATID)
 
 
+MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
 
-MINKORREKT_RSS='http://minkorrekt.de/feed/'
 
 #main loop
 while True:
