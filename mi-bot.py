@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import json
-import requests
 import os
-import feedparser
 import urllib
+import feedparser
+import requests
 
 from time import mktime, sleep
 from datetime import datetime as dt
