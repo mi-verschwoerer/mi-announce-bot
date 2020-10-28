@@ -6,7 +6,7 @@ import os
 import feedparser
 import urllib
 
-from time import mktime
+from time import mktime, sleep
 from datetime import datetime as dt
 
 
@@ -50,17 +50,17 @@ def send_message(text, chat_id):
 def tg_send(text):
     send_message(text, CHATID)
 
-from time import mktime
-from datetime import datetime as dt
+
 
 MINKORREKT_RSS='http://minkorrekt.de/feed/'
 
-mi_feed = feedparser.parse(MINKORREKT_RSS)
+#main loop
+while (True):
+    mi_feed = feedparser.parse(MINKORREKT_RSS)
 
-newest_episode = mi_feed['items'][0]
+    newest_episode = mi_feed['items'][0]
 
-episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed']))
-
-if (dt.now() - episode_release).total_seconds()/8600 < 1:
-    tg_send('*%s*\nEine neue Folge Methodisch inkorrekt ist erschienen\!\n[Jetzt anhören](%s)' % (newest_episode.title,newest_episode.link))
-
+    episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed']))
+    if (dt.now() - episode_release).total_seconds() < 3600:
+        tg_send('*%s*\nEine neue Folge Methodisch inkorrekt ist erschienen\!\n[Jetzt anhören](%s)' % (newest_episode.title,newest_episode.link))
+    sleep(3595)
