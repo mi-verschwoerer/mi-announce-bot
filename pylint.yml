@@ -1,0 +1,3 @@
+---
+- name: GitHub Action for pylint
+  uses: cclauss/GitHub-Action-for-pylint
