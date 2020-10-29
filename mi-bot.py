@@ -3,11 +3,12 @@
 import json
 import os
 import urllib
-import feedparser
-import requests
-
+import re
 from time import mktime, sleep
 from datetime import datetime as dt
+
+import feedparser
+import requests
 
 
 # Read bot token from environment
@@ -44,6 +45,8 @@ def get_last_chat_id_and_text(updates):
 
 
 def send_message(text, chat_id):
+    text = re.sub('(?<!\\\\)!', '\\!', text)
+    text = re.sub('(?<!\\\\)#', '\\#', text)
     text = urllib.parse.quote_plus(text)
     url = (f"{URL}sendMessage?text={text}"
            f"&chat_id={chat_id}"
