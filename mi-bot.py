@@ -58,17 +58,29 @@ def tg_send(text):
     send_message(text, CHATID)
 
 
-MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
+def check_minkorrekt(max_age=3600):
+    MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
+    mi_feed = feedparser.parse(MINKORREKT_RSS)
+    newest_episode = mi_feed['items'][0]
+    episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed']))
+    if (dt.now() - episode_release).total_seconds() < max_age:
+        tg_send(f'*{newest_episode.title}*\n'
+                'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
+                f'[Jetzt anhören]({newest_episode.link})')
+
+
+def check_youtube(max_age=3600):
+    YOUTUBE_RSS = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCa8qyXCS-FTs0fHD6HJeyiw'
+    yt_feed = feedparser.parse(YOUTUBE_RSS)
+    newest_episode = yt_feed['items'][0]
+    episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed']))
+    if (dt.now() - episode_release).total_seconds() < max_age:
+        tg_send(f'*{newest_episode.title}*\n'
+                'Eine neues Youtube Video ist erschienen!\n'
+                f'[Jetzt ansehen]({newest_episode.link})')
 
 
 while True:
-    mi_feed = feedparser.parse(MINKORREKT_RSS)
-
-    newest_episode = mi_feed['items'][0]
-
-    episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed']))
-    if (dt.now() - episode_release).total_seconds() < 3600:
-        tg_send(f'*{newest_episode.title}*\n'
-                'Eine neue Folge Methodisch inkorrekt ist erschienen!\n'
-                f'[Jetzt anhören]({newest_episode.link})')
+    check_minkorrekt(3600)
+    check_youtube(3600)
     sleep(3595)
