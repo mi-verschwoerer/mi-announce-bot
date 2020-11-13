@@ -6,10 +6,11 @@ import random
 import re
 from time import mktime, sleep
 from datetime import datetime as dt
+from subprocess import run
 
 import feedparser
 import requests
-from telegram import Update
+from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext
 
 
@@ -17,6 +18,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 TOKEN = os.environ['MIA_TG_TOKEN']
 CHATID = os.environ['MIA_TG_CHATID']
 URL = f"https://api.telegram.org/bot{TOKEN}/"
+DIRNAME = os.path.dirname(os.path.realpath(__file__))
 
 
 # code not using python-telegram-bot library
@@ -92,12 +94,29 @@ def cookie(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
 
 
+def crowsay(update: Update, context: CallbackContext) -> None:
+
+    i = update.message.text.find(' ')
+    if i > 0:
+        text = update.message.text[i+1:]
+    else:
+        r = run('fortune', capture_output=True, encoding='utf-8')
+        text = r.stdout
+
+    crowfile = os.path.join(DIRNAME, 'crow.cow')
+    r = run(['cowsay', '-f', crowfile, text],
+            capture_output=True, encoding='utf-8')
+    text = r.stdout
+    update.message.reply_text(f'```\n{text}\n```', quote=False, parse_mode=ParseMode.MARKDOWN)
+
+
 updater = Updater(TOKEN)
 
 updater.dispatcher.add_handler(CommandHandler('keks', cookie))
+updater.dispatcher.add_handler(CommandHandler('crowsay', crowsay))
 
 
 if __name__ == '__main__':
     updater.start_polling()
     feed_loop()
-    updater.idle()
+    # updater.idle()
