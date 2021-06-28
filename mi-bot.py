@@ -1,39 +1,31 @@
 #!/usr/bin/env python3
 
-import json
 import os
 import urllib
+import random
 import re
 from time import mktime, sleep
 from datetime import datetime as dt
+from subprocess import run
 
 import feedparser
 import requests
+from telegram import Update, ParseMode
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
 
 # Read bot token from environment
 TOKEN = os.environ['MIA_TG_TOKEN']
 CHATID = os.environ['MIA_TG_CHATID']
-
 URL = f"https://api.telegram.org/bot{TOKEN}/"
+DIRNAME = os.path.dirname(os.path.realpath(__file__))
 
 
+# code not using python-telegram-bot library
 def get_url(url):
     response = requests.get(url)
     content = response.content.decode("utf8")
     return content
-
-
-def get_json_from_url(url):
-    content = get_url(url)
-    js = json.loads(content)
-    return js
-
-
-def get_updates():
-    url = URL + "getUpdates"
-    js = get_json_from_url(url)
-    return js
 
 
 def get_last_chat_id_and_text(updates):
@@ -80,7 +72,63 @@ def check_youtube(max_age=3600):
                 f'[Jetzt ansehen]({newest_episode.link})')
 
 
-while True:
-    check_minkorrekt(3600)
-    check_youtube(3600)
-    sleep(3595)
+def get_episode_titles():
+    MINKORREKT_RSS = 'http://minkorrekt.de/feed/mp3'
+    mi_feed = feedparser.parse(MINKORREKT_RSS)
+    return [i.title for i in mi_feed['items']]
+
+
+MINKORREKT_TITLES = get_episode_titles()
+
+
+def feed_loop():
+    while True:
+        check_minkorrekt(3600)
+        check_youtube(3600)
+        sleep(3595)
+
+
+# python-telegram-bot library
+def latest_episode(update: Update, context: CallbackContext) -> None:
+    MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
+    mi_feed = feedparser.parse(MINKORREKT_RSS)
+    newest_episode = mi_feed['items'][0]
+    episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed'])).date()
+    datum = episode_release.strftime('%d.%m.%Y')
+    text = (f'Die letzte Episode ist *{newest_episode.title}* vom {datum}.\n'
+            f'[Jetzt anhören]({newest_episode.link})')
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+
+
+def cookie(update: Update, context: CallbackContext) -> None:
+    text = random.choice(MINKORREKT_TITLES)
+    update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
+
+
+def crowsay(update: Update, context: CallbackContext) -> None:
+
+    i = update.message.text.find(' ')
+    if i > 0:
+        text = update.message.text[i+1:]
+    else:
+        r = run('fortune', capture_output=True, encoding='utf-8')
+        text = r.stdout
+
+    crowfile = os.path.join(DIRNAME, 'crow.cow')
+    r = run(['cowsay', '-f', crowfile, text],
+            capture_output=True, encoding='utf-8')
+    text = r.stdout
+    update.message.reply_text(f'```\n{text}\n```', quote=False, parse_mode=ParseMode.MARKDOWN)
+
+
+updater = Updater(TOKEN)
+
+updater.dispatcher.add_handler(CommandHandler('letzteEpisode', latest_episode))
+updater.dispatcher.add_handler(CommandHandler('keks', cookie))
+updater.dispatcher.add_handler(CommandHandler('crowsay', crowsay))
+
+
+if __name__ == '__main__':
+    updater.start_polling()
+    feed_loop()
+    # updater.idle()
