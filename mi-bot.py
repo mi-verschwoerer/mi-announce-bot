@@ -89,6 +89,17 @@ def feed_loop():
 
 
 # python-telegram-bot library
+def latest_episode(update: Update, context: CallbackContext) -> None:
+    MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
+    mi_feed = feedparser.parse(MINKORREKT_RSS)
+    newest_episode = mi_feed['items'][0]
+    episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed'])).date()
+    datum = episode_release.strftime('%d.%m.%Y')
+    text = (f'Die letzte Episode ist *{newest_episode.title}* vom {datum}.\n'
+            f'[Jetzt anhören]({newest_episode.link})')
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+
+
 def cookie(update: Update, context: CallbackContext) -> None:
     text = random.choice(MINKORREKT_TITLES)
     update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
@@ -112,6 +123,7 @@ def crowsay(update: Update, context: CallbackContext) -> None:
 
 updater = Updater(TOKEN)
 
+updater.dispatcher.add_handler(CommandHandler('letzteEpisode', latest_episode))
 updater.dispatcher.add_handler(CommandHandler('keks', cookie))
 updater.dispatcher.add_handler(CommandHandler('crowsay', crowsay))
 
