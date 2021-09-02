@@ -127,24 +127,40 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     i = update.message.text.find(' ')
     if i > 0:
         search_term = update.message.text[i+1:]
+    MINKORREKT_RSS = 'http://minkorrekt.de/feed/mp3'
+    mi_feed = feedparser.parse(MINKORREKT_RSS)
     topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.entries]
     ratios = process.extract(search_term, topics_all_episodes)
     print("Die besten 3 Treffer sind die Episoden:")
     for ratio in ratios[:3]:
         print(f"{ratio[0][0]}\n-----")
     episodes = [ratio[0][0] for ratio in ratios[:3]]
-    return "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
+    text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 def topics_of_episode(update: Update, context: CallbackContext) -> None:
+    MINKORREKT_RSS = 'http://minkorrekt.de/feed/mp3'
+    mi_feed = feedparser.parse(MINKORREKT_RSS)
+    topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.entries]
     i = update.message.text.find(' ')
     if i > 0:
-         episode_number = update.message.text[i+1:]
+        episode_number = update.message.text[i+1:]
     try:
-        episode = int(episode_number)
+        episode_number = int(episode_number)
+        # Special case for the split episodes 12 and 12b
+        if episode_number >= 13:
+            index_number  = len(topics_all_episodes)-2-episode_number
+        else:
+            index_number = len(topics_all_episodes)-1-episode_number
     except:
         print("Es gab einen Fehler mit der Episodennummer.\nStelle sicher, dass du eine Zahl angegeben hast!")
-    topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.entries]
-    episode_topics = topics_all_episodes[episode]
+    # If someone asks for episode number 12, they will automatically retrieve
+    # episode 12b as well since they basically belong together
+    if episode_number == 12:
+        episode_topics = topics_all_episodes[index_number-1:index_number+1][::-1]
+        episode_topics = ["".join(tops) for tops in episode_topics]
+    else:
+        episode_topics = topics_all_episodes[index_number]
     episode_topics = " ".join(episode_topics)
     topic_start_points = [m.start() for m in re.finditer("Thema [1, 2, 3, 4]", episode_topics)]
     topic_end_points = []
@@ -153,13 +169,16 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     if 0 == len(topic_start_points):
         return "Themen nicht gefunden.\nWahrscheinlich Nobelpreis/Jahresrückblick-Folge"
     topics = [html2markdown.convert(episode_topics[start:end]) for start, end in zip(topic_start_points, topic_end_points)]
-    return topics
+    topics_text = "\n".join(topics)
+    episode_title = "12a Du wirst wieder angerufen! & 12b Previously (on) Lost" if episode_number == 12 else topics_all_episodes[index_number][0]
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+
 
 
 
 updater = Updater(TOKEN)
 
-updater.dispatcher.add_handler(CommandHandler('findeFolge', fuzzy_topic_search))
+updater.dispatcher.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
 updater.dispatcher.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
 updater.dispatcher.add_handler(CommandHandler('letzteEpisode', latest_episode))
 updater.dispatcher.add_handler(CommandHandler('keks', cookie))
