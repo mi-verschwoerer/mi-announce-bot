@@ -131,9 +131,6 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     mi_feed = feedparser.parse(MINKORREKT_RSS)
     topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.entries]
     ratios = process.extract(search_term, topics_all_episodes)
-    print("Die besten 3 Treffer sind die Episoden:")
-    for ratio in ratios[:3]:
-        print(f"{ratio[0][0]}\n-----")
     episodes = [ratio[0][0] for ratio in ratios[:3]]
     text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
@@ -171,6 +168,7 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     topics = [html2markdown.convert(episode_topics[start:end]) for start, end in zip(topic_start_points, topic_end_points)]
     topics_text = "\n".join(topics)
     episode_title = "12a Du wirst wieder angerufen! & 12b Previously (on) Lost" if episode_number == 12 else topics_all_episodes[index_number][0]
+    text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 
