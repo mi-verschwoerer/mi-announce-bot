@@ -1,3 +1,5 @@
+fuzzywuzzy
+html2markdown
 feedparser
 python-telegram-bot
 requests
