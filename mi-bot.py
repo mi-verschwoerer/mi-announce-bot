@@ -9,13 +9,12 @@ from datetime import datetime as dt
 from subprocess import run
 
 import feedparser
+import html2markdown
 import requests
+from fuzzywuzzy import process
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext
 
-import html2markdown
-from fuzzywuzzy import fuzz
-from fuzzywuzzy import process
 
 # Read bot token from environment
 TOKEN = os.environ['MIA_TG_TOKEN']
