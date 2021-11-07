@@ -43,6 +43,7 @@ def get_last_chat_id_and_text(updates):
 def send_message(text, chat_id):
     text = re.sub('(?<!\\\\)!', '\\!', text)
     text = re.sub('(?<!\\\\)#', '\\#', text)
+    text = re.sub('(?<!\\\\)-', '\\-', text)
     text = urllib.parse.quote_plus(text)
     url = (f"{URL}sendMessage?text={text}"
            f"&chat_id={chat_id}"
