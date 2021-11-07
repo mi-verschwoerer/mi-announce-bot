@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+import logging
 import os
 import pickle
 import random
 import re
+import sys
 import time
 import traceback
 import urllib
@@ -27,6 +29,16 @@ DIRNAME = os.path.dirname(os.path.realpath(__file__))
 MINKORREKT_RSS = 'http://minkorrekt.de/feed/mp3'
 
 
+# Setup logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+log_format = logging.Formatter('%(asctime)s %(levelname)s - %(message)s')
+log_handler = logging.StreamHandler(sys.stdout)
+log_handler.setFormatter(log_format)
+log_handler.setLevel(logging.INFO)
+logger.addHandler(log_handler)
+
+
 class PodcastFeed:
     """Represents the parsed and cached podcast RSS feed"""
 
@@ -48,26 +60,26 @@ class PodcastFeed:
             try:
                 with open(dump, 'rb') as f:
                     self.last_updated, self.feed = pickle.load(f)
-                print(time.asctime(), 'Reloaded dumped feed')
+                logger.info('Reloaded dumped feed')
             except Exception as exc:
-                print(f'{exc!r}\n{traceback.format_exc()}')
-                print(time.asctime(), 'Failed loding dumped feed. Falling back to download.')
+                logger.info(f'{exc!r}\n{traceback.format_exc()}')
+                logger.info('Failed loding dumped feed. Falling back to download.')
                 self._get_feed()
         else:
-            print(time.asctime(), 'Getting feed')
+            logger.info('Getting feed')
             self._get_feed()
 
     def _get_feed(self):
         self.feed = feedparser.parse(self.url)
         self.last_updated = time.time()
-        print(time.asctime(), 'Done parsing feed')
+        logger.info('Done parsing feed')
         if self.dump:
             with open(self.dump, 'wb') as f:
                 pickle.dump((self.last_updated, self.feed), f)
 
     def refresh(self):
         if self.last_updated + self.max_age < time.time():
-            print(time.asctime(), 'Refreshing feed')
+            logger.info('Refreshing feed')
             self._get_feed()
 
     def check_new_episode(self, max_age=3600):
