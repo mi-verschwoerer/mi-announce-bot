@@ -3,4 +3,3 @@ html2markdown
 feedparser
 python-Levenshtein
 python-telegram-bot
-requests

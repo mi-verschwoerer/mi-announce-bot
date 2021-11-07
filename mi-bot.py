@@ -8,13 +8,11 @@ import re
 import sys
 import time
 import traceback
-import urllib
 from datetime import datetime as dt
 from subprocess import run
 
 import feedparser
 import html2markdown
-import requests
 from fuzzywuzzy import process
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext
@@ -22,7 +20,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # Read bot token from environment
 TOKEN = os.environ['MIA_TG_TOKEN']
-CHATID = os.environ['MIA_TG_CHATID']
+CHAT_IDS = os.environ['MIA_TG_CHATID'].split(',')
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DUMP = os.getenv('MIA_DUMP', '')
 DIRNAME = os.path.dirname(os.path.realpath(__file__))
@@ -103,42 +101,22 @@ class PodcastFeed:
 mi_feed = PodcastFeed(url=MINKORREKT_RSS, dump=DUMP)
 
 
-# code not using python-telegram-bot library
-def get_url(url):
-    response = requests.get(url)
-    content = response.content.decode("utf8")
-    return content
-
-
-def get_last_chat_id_and_text(updates):
-    num_updates = len(updates["result"])
-    last_update = num_updates - 1
-    text = updates["result"][last_update]["message"]["text"]
-    chat_id = updates["result"][last_update]["message"]["chat"]["id"]
-    return text, chat_id
-
-
-def send_message(text, chat_id):
-    text = re.sub('(?<!\\\\)!', '\\!', text)
-    text = re.sub('(?<!\\\\)#', '\\#', text)
-    text = re.sub('(?<!\\\\)-', '\\-', text)
-    text = urllib.parse.quote_plus(text)
-    url = (f"{URL}sendMessage?text={text}"
-           f"&chat_id={chat_id}"
-           "&parse_mode=MarkdownV2")
-    get_url(url)
-
-
-def tg_send(text):
-    send_message(text, CHATID)
+def tg_broadcast(text, escape_chars=['!', '#', '-']):
+    """Sends the message `text` to all CHAT_IDS."""
+    for c in escape_chars:
+        text = re.sub(f'(?<!\\\\){c}', f'\\{c}', text)
+    for chat_id in CHAT_IDS:
+        bot.send_message(chat_id=chat_id,
+                         text=text,
+                         parse_mode=ParseMode.MARKDOWN_V2)
 
 
 def check_minkorrekt(max_age=3600):
     new_episode = mi_feed.check_new_episode(max_age=max_age)
     if new_episode:
-        tg_send(f'*{new_episode.title}*\n'
-                'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
-                f'[Jetzt anhören]({new_episode.link})')
+        tg_broadcast(f'*{new_episode.title}*\n'
+                     'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
+                     f'[Jetzt anhören]({new_episode.link})')
 
 
 def check_youtube(max_age=3600):
@@ -147,9 +125,9 @@ def check_youtube(max_age=3600):
     newest_episode = yt_feed['items'][0]
     episode_release = dt.fromtimestamp(time.mktime(newest_episode['published_parsed']))
     if (dt.now() - episode_release).total_seconds() < max_age:
-        tg_send(f'*{newest_episode.title}*\n'
-                'Eine neues Youtube Video ist erschienen!\n'
-                f'[Jetzt ansehen]({newest_episode.link})')
+        tg_broadcast(f'*{newest_episode.title}*\n'
+                     'Eine neues Youtube Video ist erschienen!\n'
+                     f'[Jetzt ansehen]({newest_episode.link})')
 
 
 def feed_loop():
@@ -159,14 +137,13 @@ def feed_loop():
         time.sleep(3595)
 
 
-# python-telegram-bot library
 def latest_episode(update: Update, context: CallbackContext) -> None:
     latest_episode = mi_feed.latest_episode
     episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed'])).date()
     datum = episode_release.strftime('%d.%m.%Y')
     text = (f'Die letzte Episode ist *{latest_episode.title}* vom {datum}.\n'
             f'[Jetzt anhören]({latest_episode.link})')
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
 def cookie(update: Update, context: CallbackContext) -> None:
@@ -186,7 +163,7 @@ def crowsay(update: Update, context: CallbackContext) -> None:
     r = run(['cowsay', '-f', crowfile, text],
             capture_output=True, encoding='utf-8')
     text = r.stdout
-    update.message.reply_text(f'```\n{text}\n```', quote=False, parse_mode=ParseMode.MARKDOWN)
+    update.message.reply_text(f'```\n{text}\n```', quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
 def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
@@ -197,7 +174,7 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     ratios = process.extract(search_term, topics_all_episodes)
     episodes = [ratio[0][0] for ratio in ratios[:3]]
     text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_v2)
 
 def topics_of_episode(update: Update, context: CallbackContext) -> None:
     topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.feed.entries]
@@ -231,10 +208,11 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     topics_text = "\n".join(topics)
     episode_title = "12a Du wirst wieder angerufen! & 12b Previously (on) Lost" if episode_number == 12 else topics_all_episodes[index_number][0]
     text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
 updater = Updater(TOKEN)
+bot = updater.bot
 
 updater.dispatcher.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
 updater.dispatcher.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
@@ -246,4 +224,4 @@ updater.dispatcher.add_handler(CommandHandler('crowsay', crowsay))
 if __name__ == '__main__':
     updater.start_polling()
     feed_loop()
-    # updater.idle()
+    #updater.idle()
