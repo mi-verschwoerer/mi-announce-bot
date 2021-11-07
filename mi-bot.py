@@ -22,6 +22,7 @@ TOKEN = os.environ['MIA_TG_TOKEN']
 CHATID = os.environ['MIA_TG_CHATID']
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DIRNAME = os.path.dirname(os.path.realpath(__file__))
+MINKORREKT_RSS = 'http://minkorrekt.de/feed/mp3'
 
 
 # code not using python-telegram-bot library
@@ -54,7 +55,6 @@ def tg_send(text):
 
 
 def check_minkorrekt(max_age=3600):
-    MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
     mi_feed = feedparser.parse(MINKORREKT_RSS)
     newest_episode = mi_feed['items'][0]
     episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed']))
@@ -76,7 +76,6 @@ def check_youtube(max_age=3600):
 
 
 def get_episode_titles():
-    MINKORREKT_RSS = 'http://minkorrekt.de/feed/mp3'
     mi_feed = feedparser.parse(MINKORREKT_RSS)
     return [i.title for i in mi_feed['items']]
 
@@ -93,7 +92,6 @@ def feed_loop():
 
 # python-telegram-bot library
 def latest_episode(update: Update, context: CallbackContext) -> None:
-    MINKORREKT_RSS = 'http://minkorrekt.de/feed/'
     mi_feed = feedparser.parse(MINKORREKT_RSS)
     newest_episode = mi_feed['items'][0]
     episode_release = dt.fromtimestamp(mktime(newest_episode['published_parsed'])).date()
