@@ -101,10 +101,16 @@ class PodcastFeed:
 mi_feed = PodcastFeed(url=MINKORREKT_RSS, dump=DUMP)
 
 
-def tg_broadcast(text, escape_chars=['!', '#', '-']):
+def markdownv2_escape(text):
+    """Escapes all necessary characters and returns valid MarkdownV2 style.
+
+    See: https://core.telegram.org/bots/api#markdownv2-style
+    """
+    return re.sub(r'([_*\[\]\(\)~`>#+\-=|{}.!\\])', r'\\\1', text)
+
+
+def tg_broadcast(text):
     """Sends the message `text` to all CHAT_IDS."""
-    for c in escape_chars:
-        text = re.sub(f'(?<!\\\\){c}', f'\\{c}', text)
     for chat_id in CHAT_IDS:
         bot.send_message(chat_id=chat_id,
                          text=text,
@@ -114,7 +120,7 @@ def tg_broadcast(text, escape_chars=['!', '#', '-']):
 def check_minkorrekt(max_age=3600):
     new_episode = mi_feed.check_new_episode(max_age=max_age)
     if new_episode:
-        tg_broadcast(f'*{new_episode.title}*\n'
+        tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
                      'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
                      f'[Jetzt anhören]({new_episode.link})')
 
@@ -125,8 +131,8 @@ def check_youtube(max_age=3600):
     newest_episode = yt_feed['items'][0]
     episode_release = dt.fromtimestamp(time.mktime(newest_episode['published_parsed']))
     if (dt.now() - episode_release).total_seconds() < max_age:
-        tg_broadcast(f'*{newest_episode.title}*\n'
-                     'Eine neues Youtube Video ist erschienen!\n'
+        tg_broadcast(f'*{markdownv2_escape(newest_episode.title)}*\n'
+                     'Eine neues Youtube Video ist erschienen\\!\n'
                      f'[Jetzt ansehen]({newest_episode.link})')
 
 
@@ -140,9 +146,10 @@ def feed_loop():
 def latest_episode(update: Update, context: CallbackContext) -> None:
     latest_episode = mi_feed.latest_episode
     episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed'])).date()
-    datum = episode_release.strftime('%d.%m.%Y')
-    text = (f'Die letzte Episode ist *{latest_episode.title}* vom {datum}.\n'
+    datum = episode_release.strftime('%d\\.%m\\.%Y')
+    text = (f'Die letzte Episode ist *{markdownv2_escape(latest_episode.title)}* vom {datum}\\.\n'
             f'[Jetzt anhören]({latest_episode.link})')
+    print(text)
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
@@ -163,6 +170,9 @@ def crowsay(update: Update, context: CallbackContext) -> None:
     r = run(['cowsay', '-f', crowfile, text],
             capture_output=True, encoding='utf-8')
     text = r.stdout
+    print(text)
+    text = markdownv2_escape(text)
+    print(text)
     update.message.reply_text(f'```\n{text}\n```', quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
@@ -174,7 +184,7 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     ratios = process.extract(search_term, topics_all_episodes)
     episodes = [ratio[0][0] for ratio in ratios[:3]]
     text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_v2)
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 def topics_of_episode(update: Update, context: CallbackContext) -> None:
     topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.feed.entries]
@@ -208,7 +218,7 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     topics_text = "\n".join(topics)
     episode_title = "12a Du wirst wieder angerufen! & 12b Previously (on) Lost" if episode_number == 12 else topics_all_episodes[index_number][0]
     text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
+    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 
 updater = Updater(TOKEN)
