@@ -235,4 +235,3 @@ updater.dispatcher.add_handler(CommandHandler('crowsay', crowsay))
 if __name__ == '__main__':
     updater.start_polling()
     feed_loop()
-    #updater.idle()
