@@ -186,6 +186,7 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
+
 def topics_of_episode(update: Update, context: CallbackContext) -> None:
     topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.feed.entries]
     i = update.message.text.find(' ')
@@ -195,7 +196,7 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
         episode_number = int(episode_number)
         # Special case for the split episodes 12 and 12b
         if episode_number >= 13:
-            index_number  = len(topics_all_episodes)-2-episode_number
+            index_number = len(topics_all_episodes)-2-episode_number
         else:
             index_number = len(topics_all_episodes)-1-episode_number
     except:
