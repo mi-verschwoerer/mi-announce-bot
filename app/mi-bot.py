@@ -221,6 +221,8 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
+def debug_new_episode(update: Update, context: CallbackContext):
+    check_minkorrekt(2592000)
 
 updater = Updater(TOKEN)
 bot = updater.bot
@@ -230,7 +232,7 @@ updater.dispatcher.add_handler(CommandHandler('themenVonFolgeX', topics_of_episo
 updater.dispatcher.add_handler(CommandHandler('letzteEpisode', latest_episode))
 updater.dispatcher.add_handler(CommandHandler('keks', cookie))
 updater.dispatcher.add_handler(CommandHandler('crowsay', crowsay))
-
+updater.dispatcher.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
 
 if __name__ == '__main__':
     updater.start_polling()
