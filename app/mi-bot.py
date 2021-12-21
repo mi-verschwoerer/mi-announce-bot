@@ -119,6 +119,9 @@ def tg_broadcast(text):
 
 def check_minkorrekt(max_age=3600):
     new_episode = mi_feed.check_new_episode(max_age=max_age)
+    latest_episode = mi_feed.latest_episode
+    logger.info(f'Checked for new episode: {bool(new_episode)}. '
+                f'Latest episode is: {latest_episode.title}')
     if new_episode:
         tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
                      'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
@@ -128,12 +131,15 @@ def check_minkorrekt(max_age=3600):
 def check_youtube(max_age=3600):
     YOUTUBE_RSS = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCa8qyXCS-FTs0fHD6HJeyiw'
     yt_feed = feedparser.parse(YOUTUBE_RSS)
-    newest_episode = yt_feed['items'][0]
-    episode_release = dt.fromtimestamp(time.mktime(newest_episode['published_parsed']))
-    if (dt.now() - episode_release).total_seconds() < max_age:
-        tg_broadcast(f'*{markdownv2_escape(newest_episode.title)}*\n'
+    latest_episode = yt_feed['items'][0]
+    episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed']))
+    new_episode = (dt.now() - episode_release).total_seconds() < max_age
+    logger.info(f'Checked for new YT video: {new_episode}. '
+                f'Latest video is: {latest_episode.title}')
+    if new_episode:
+        tg_broadcast(f'*{markdownv2_escape(latest_episode.title)}*\n'
                      'Eine neues Youtube Video ist erschienen\\!\n'
-                     f'[Jetzt ansehen]({newest_episode.link})')
+                     f'[Jetzt ansehen]({latest_episode.link})')
 
 
 def feed_loop():
@@ -149,7 +155,6 @@ def latest_episode(update: Update, context: CallbackContext) -> None:
     datum = episode_release.strftime('%d\\.%m\\.%Y')
     text = (f'Die letzte Episode ist *{markdownv2_escape(latest_episode.title)}* vom {datum}\\.\n'
             f'[Jetzt anhören]({latest_episode.link})')
-    print(text)
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
@@ -170,9 +175,7 @@ def crowsay(update: Update, context: CallbackContext) -> None:
     r = run(['cowsay', '-f', crowfile, text],
             capture_output=True, encoding='utf-8')
     text = r.stdout
-    print(text)
     text = markdownv2_escape(text)
-    print(text)
     update.message.reply_text(f'```\n{text}\n```', quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
