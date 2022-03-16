@@ -81,15 +81,14 @@ class PodcastFeed:
             self._get_feed()
 
     def check_new_episode(self, max_age=3600):
-        latest_episode = self.latest_episode
-        episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed']))
-        if (dt.now() - episode_release).total_seconds() < max_age:
-            return latest_episode
+        self.refresh()
+        release = dt.fromtimestamp(time.mktime(self.latest_episode['published_parsed']))
+        if (dt.now() - release).total_seconds() < max_age:
+            return self.latest_episode
         return False
 
     @property
     def latest_episode(self):
-        self.refresh()
         return self.feed['items'][0]
 
     @property
@@ -119,9 +118,8 @@ def tg_broadcast(text):
 
 def check_minkorrekt(max_age=3600):
     new_episode = mi_feed.check_new_episode(max_age=max_age)
-    latest_episode = mi_feed.latest_episode
     logger.info(f'Checked for new episode: {bool(new_episode)}. '
-                f'Latest episode is: {latest_episode.title}')
+                f'Latest episode is: {mi_feed.latest_episode.title}')
     if new_episode:
         tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
                      'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
