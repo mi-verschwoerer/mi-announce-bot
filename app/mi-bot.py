@@ -181,7 +181,11 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     i = update.message.text.find(' ')
     if i > 0:
         search_term = update.message.text[i+1:]
-    topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.feed.entries]
+    topics_all_episodes = [[
+        i.title,
+        i.content[0].value.replace("<!-- /wp:paragraph -->",
+                                   "").replace("<!-- wp:paragraph -->", "")
+    ] for i in mi_feed.feed.entries]
     ratios = process.extract(search_term, topics_all_episodes)
     episodes = [ratio[0][0] for ratio in ratios[:3]]
     text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
@@ -189,19 +193,24 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
 
 
 def topics_of_episode(update: Update, context: CallbackContext) -> None:
-    topics_all_episodes = [[i.title, i.content[0].value.replace("<!-- /wp:paragraph -->", "").replace("<!-- wp:paragraph -->", "")] for i in mi_feed.feed.entries]
+    topics_all_episodes = [[
+        i.title,
+        i.content[0].value.replace("<!-- /wp:paragraph -->",
+                                   "").replace("<!-- wp:paragraph -->", "")
+    ] for i in mi_feed.feed.entries]
     i = update.message.text.find(' ')
     if i > 0:
         episode_number = update.message.text[i+1:]
-    try:
+    if episode_number.isnumeric():
         episode_number = int(episode_number)
         # Special case for the split episodes 12 and 12b
         if episode_number >= 13:
             index_number = len(topics_all_episodes)-2-episode_number
         else:
             index_number = len(topics_all_episodes)-1-episode_number
-    except:
-        print("Es gab einen Fehler mit der Episodennummer.\nStelle sicher, dass du eine Zahl angegeben hast!")
+    else:
+        print("Es gab einen Fehler mit der Episodennummer.\n"
+              "Stelle sicher, dass du eine Zahl angegeben hast!")
     # If someone asks for episode number 12, they will automatically retrieve
     # episode 12b as well since they basically belong together
     if episode_number == 12:
@@ -215,10 +224,17 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     for start in topic_start_points:
         topic_end_points.append(start + episode_topics[start:].find('\n'))
     if 0 == len(topic_start_points):
-        return "Themen nicht gefunden.\nWahrscheinlich Nobelpreis/Jahresrückblick-Folge"
-    topics = [html2markdown.convert(episode_topics[start:end]) for start, end in zip(topic_start_points, topic_end_points)]
+        return ("Themen nicht gefunden.\n"
+                "Wahrscheinlich Nobelpreis/Jahresrückblick-Folge")
+    topics = [
+        html2markdown.convert(episode_topics[start:end])
+        for start, end in zip(topic_start_points, topic_end_points)
+    ]
     topics_text = "\n".join(topics)
-    episode_title = "12a Du wirst wieder angerufen! & 12b Previously (on) Lost" if episode_number == 12 else topics_all_episodes[index_number][0]
+    if episode_number == 12:
+        episode_title = "12a Du wirst wieder angerufen! & 12b Previously (on) Lost"
+    else:
+        episode_title = topics_all_episodes[index_number][0]
     text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
