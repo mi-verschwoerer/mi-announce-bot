@@ -75,13 +75,13 @@ class PodcastFeed:
             with open(self.dump, 'wb') as f:
                 pickle.dump((self.last_updated, self.feed), f)
 
-    def refresh(self):
-        if self.last_updated + self.max_age < time.time():
+    def refresh(self, force=False):
+        if force or (self.last_updated + self.max_age < time.time()):
             logger.info('Refreshing feed')
             self._get_feed()
 
     def check_new_episode(self, max_age=3600):
-        self.refresh()
+        self.refresh(force=True)
         release = dt.fromtimestamp(time.mktime(self.latest_episode['published_parsed']))
         if (dt.now() - release).total_seconds() < max_age:
             return self.latest_episode
