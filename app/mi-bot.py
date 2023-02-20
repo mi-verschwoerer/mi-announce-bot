@@ -24,7 +24,8 @@ CHAT_IDS = os.environ['MIA_TG_CHATID'].split(',')
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DUMP = os.getenv('MIA_DUMP', '')
 DIRNAME = os.path.dirname(os.path.realpath(__file__))
-MINKORREKT_RSS = 'http://minkorrekt.de/feed/mp3'
+PODCAST_FEED = os.environ['MIA_PODCAST_FEED']
+YOUTUBE_FEED = os.getenv('MIA_YOUTUBE_FEED', None)
 
 
 # Setup logging
@@ -97,7 +98,9 @@ class PodcastFeed:
         return [i.title for i in self.feed['items']]
 
 
-mi_feed = PodcastFeed(url=MINKORREKT_RSS, dump=DUMP)
+podcast_feed = PodcastFeed(url=PODCAST_FEED, dump=DUMP)
+if YOUTUBE_FEED:
+    yt_feed = feedparser.parse(YOUTUBE_FEED)
 
 
 def markdownv2_escape(text):
@@ -116,10 +119,10 @@ def tg_broadcast(text):
                          parse_mode=ParseMode.MARKDOWN_V2)
 
 
-def check_minkorrekt(max_age=3600):
-    new_episode = mi_feed.check_new_episode(max_age=max_age)
+def check_podcast(max_age=3600):
+    new_episode = podcast_feed.check_new_episode(max_age=max_age)
     logger.info(f'Checked for new episode: {bool(new_episode)}. '
-                f'Latest episode is: {mi_feed.latest_episode.title}')
+                f'Latest episode is: {podcast_feed.latest_episode.title}')
     if new_episode:
         tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
                      'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
@@ -127,8 +130,6 @@ def check_minkorrekt(max_age=3600):
 
 
 def check_youtube(max_age=3600):
-    YOUTUBE_RSS = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCa8qyXCS-FTs0fHD6HJeyiw'
-    yt_feed = feedparser.parse(YOUTUBE_RSS)
     latest_episode = yt_feed['items'][0]
     episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed']))
     new_episode = (dt.now() - episode_release).total_seconds() < max_age
@@ -142,13 +143,14 @@ def check_youtube(max_age=3600):
 
 def feed_loop():
     while True:
-        check_minkorrekt(3600)
-        check_youtube(3600)
+        check_podcast(3600)
+        if YOUTUBE_FEED:
+            check_youtube(3600)
         time.sleep(3595)
 
 
 def latest_episode(update: Update, context: CallbackContext) -> None:
-    latest_episode = mi_feed.latest_episode
+    latest_episode = podcast_feed.latest_episode
     episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed'])).date()
     datum = episode_release.strftime('%d\\.%m\\.%Y')
     text = (f'Die letzte Episode ist *{markdownv2_escape(latest_episode.title)}* vom {datum}\\.\n'
@@ -157,7 +159,7 @@ def latest_episode(update: Update, context: CallbackContext) -> None:
 
 
 def cookie(update: Update, context: CallbackContext) -> None:
-    text = random.choice(mi_feed.episode_titles)
+    text = random.choice(podcast_feed.episode_titles)
     update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
 
 
@@ -185,7 +187,7 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
         i.title,
         i.content[0].value.replace("<!-- /wp:paragraph -->",
                                    "").replace("<!-- wp:paragraph -->", "")
-    ] for i in mi_feed.feed.entries]
+    ] for i in podcast_feed.feed.entries]
     ratios = process.extract(search_term, topics_all_episodes)
     episodes = [ratio[0][0] for ratio in ratios[:3]]
     text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
@@ -197,7 +199,7 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
         i.title,
         i.content[0].value.replace("<!-- /wp:paragraph -->",
                                    "").replace("<!-- wp:paragraph -->", "")
-    ] for i in mi_feed.feed.entries]
+    ] for i in podcast_feed.feed.entries]
     i = update.message.text.find(' ')
     if i > 0:
         episode_number = update.message.text[i+1:]
@@ -238,8 +240,10 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
     update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
+
 def debug_new_episode(update: Update, context: CallbackContext):
-    check_minkorrekt(2592000)
+    check_podcast(2592000)
+
 
 updater = Updater(TOKEN)
 bot = updater.bot
