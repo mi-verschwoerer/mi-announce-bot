@@ -97,6 +97,10 @@ class PodcastFeed:
         self.refresh()
         return [i.title for i in self.feed['items']]
 
+    @property
+    def title(self):
+        return self.feed['feed'].get('title', None)
+
 
 podcast_feeds = []
 for i, feed in enumerate(PODCAST_FEEDS):
@@ -131,7 +135,7 @@ def check_podcast(max_age=3600):
                     f'Latest episode is: {podcast_feed.latest_episode.title}')
         if new_episode:
             tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
-                         'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
+                         f'Eine neue Folge von "{podcast_feed.title}" ist erschienen\\!\n'
                          f'[Jetzt anhören]({new_episode.link})')
 
 
@@ -143,7 +147,7 @@ def check_youtube(max_age=3600):
                 f'Latest video is: {latest_episode.title}')
     if new_episode:
         tg_broadcast(f'*{markdownv2_escape(latest_episode.title)}*\n'
-                     'Eine neues Youtube Video ist erschienen\\!\n'
+                     'Ein neues Youtube Video ist erschienen\\!\n'
                      f'[Jetzt ansehen]({latest_episode.link})')
 
 
