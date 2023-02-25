@@ -24,7 +24,7 @@ CHAT_IDS = os.environ['MIA_TG_CHATID'].split(',')
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DUMP = os.getenv('MIA_DUMP', '')
 DIRNAME = os.path.dirname(os.path.realpath(__file__))
-PODCAST_FEED = os.environ['MIA_PODCAST_FEED']
+PODCAST_FEEDS = os.environ['MIA_PODCAST_FEED'].split(',')
 YOUTUBE_FEED = os.getenv('MIA_YOUTUBE_FEED', None)
 
 
@@ -59,13 +59,13 @@ class PodcastFeed:
             try:
                 with open(dump, 'rb') as f:
                     self.last_updated, self.feed = pickle.load(f)
-                logger.info('Reloaded dumped feed')
+                logger.info(f'Reloaded dumped feed for {self.url}')
             except Exception as exc:
                 logger.info(f'{exc!r}\n{traceback.format_exc()}')
                 logger.info('Failed loding dumped feed. Falling back to download.')
                 self._get_feed()
         else:
-            logger.info('Getting feed')
+            logger.info(f'Loading feed {self.url}')
             self._get_feed()
 
     def _get_feed(self):
@@ -98,7 +98,12 @@ class PodcastFeed:
         return [i.title for i in self.feed['items']]
 
 
-podcast_feed = PodcastFeed(url=PODCAST_FEED, dump=DUMP)
+podcast_feeds = []
+for i, feed in enumerate(PODCAST_FEEDS):
+    podcast_feeds.append(PodcastFeed(url=feed, dump=f'{DUMP}_{i}'))
+podcast_feed = podcast_feeds[0]  # select main feed
+
+
 if YOUTUBE_FEED:
     yt_feed = feedparser.parse(YOUTUBE_FEED)
 
@@ -120,13 +125,14 @@ def tg_broadcast(text):
 
 
 def check_podcast(max_age=3600):
-    new_episode = podcast_feed.check_new_episode(max_age=max_age)
-    logger.info(f'Checked for new episode: {bool(new_episode)}. '
-                f'Latest episode is: {podcast_feed.latest_episode.title}')
-    if new_episode:
-        tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
-                     'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
-                     f'[Jetzt anhören]({new_episode.link})')
+    for podcast_feed in podcast_feeds:
+        new_episode = podcast_feed.check_new_episode(max_age=max_age)
+        logger.info(f'Checked for new episode: {bool(new_episode)}. '
+                    f'Latest episode is: {podcast_feed.latest_episode.title}')
+        if new_episode:
+            tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
+                         'Eine neue Folge Methodisch inkorrekt ist erschienen\\!\n'
+                         f'[Jetzt anhören]({new_episode.link})')
 
 
 def check_youtube(max_age=3600):
