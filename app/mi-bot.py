@@ -14,8 +14,9 @@ from subprocess import run
 import feedparser
 import html2markdown
 from fuzzywuzzy import process
-from telegram import Update, ParseMode
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram import Update
+from telegram.ext import Application, CommandHandler, CallbackContext
+from telegram.constants import ParseMode
 
 
 # Read bot token from environment
@@ -159,21 +160,21 @@ def feed_loop():
         time.sleep(3595)
 
 
-def latest_episode(update: Update, context: CallbackContext) -> None:
+async def latest_episode(update: Update, context: CallbackContext) -> None:
     latest_episode = podcast_feed.latest_episode
     episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed'])).date()
     datum = episode_release.strftime('%d\\.%m\\.%Y')
     text = (f'Die letzte Episode ist *{markdownv2_escape(latest_episode.title)}* vom {datum}\\.\n'
             f'[Jetzt anhören]({latest_episode.link})')
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
+    await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
-def cookie(update: Update, context: CallbackContext) -> None:
+async def cookie(update: Update, context: CallbackContext) -> None:
     text = random.choice(podcast_feed.episode_titles)
-    update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
+    await update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
 
 
-def crowsay(update: Update, context: CallbackContext) -> None:
+async def crowsay(update: Update, context: CallbackContext) -> None:
     i = update.message.text.find(' ')
     if i > 0:
         text = update.message.text[i+1:]
@@ -186,10 +187,11 @@ def crowsay(update: Update, context: CallbackContext) -> None:
             capture_output=True, encoding='utf-8')
     text = r.stdout
     text = markdownv2_escape(text)
-    update.message.reply_text(f'```\n{text}\n```', quote=False, parse_mode=ParseMode.MARKDOWN_V2)
+    await update.message.reply_text(f'```\n{text}\n```',
+                                    quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
-def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
+async def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     i = update.message.text.find(' ')
     if i > 0:
         search_term = update.message.text[i+1:]
@@ -201,10 +203,10 @@ def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     ratios = process.extract(search_term, topics_all_episodes)
     episodes = [ratio[0][0] for ratio in ratios[:3]]
     text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 
-def topics_of_episode(update: Update, context: CallbackContext) -> None:
+async def topics_of_episode(update: Update, context: CallbackContext) -> None:
     topics_all_episodes = [[
         i.title,
         i.content[0].value.replace("<!-- /wp:paragraph -->",
@@ -248,23 +250,22 @@ def topics_of_episode(update: Update, context: CallbackContext) -> None:
     else:
         episode_title = topics_all_episodes[index_number][0]
     text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
-    update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 
-def debug_new_episode(update: Update, context: CallbackContext):
+async def debug_new_episode(update: Update, context: CallbackContext):
     check_podcast(2592000)
 
 
-updater = Updater(TOKEN)
-bot = updater.bot
+bot = Application.builder().token(TOKEN).build()
 
-updater.dispatcher.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
-updater.dispatcher.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
-updater.dispatcher.add_handler(CommandHandler('letzteEpisode', latest_episode))
-updater.dispatcher.add_handler(CommandHandler('keks', cookie))
-updater.dispatcher.add_handler(CommandHandler('crowsay', crowsay))
-updater.dispatcher.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
+bot.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
+bot.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
+bot.add_handler(CommandHandler('letzteEpisode', latest_episode))
+bot.add_handler(CommandHandler('keks', cookie))
+bot.add_handler(CommandHandler('crowsay', crowsay))
+bot.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
 
 if __name__ == '__main__':
-    updater.start_polling()
+    bot.run_polling()
     feed_loop()
