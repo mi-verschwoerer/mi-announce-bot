@@ -11,11 +11,12 @@ import traceback
 from datetime import datetime as dt
 from subprocess import run
 
+import dateparser
 import feedparser
 import html2markdown
 from fuzzywuzzy import process
 from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 
@@ -72,20 +73,22 @@ class PodcastFeed:
     def _get_feed(self):
         self.feed = feedparser.parse(self.url)
         self.last_updated = time.time()
-        logger.info('Done parsing feed')
         if self.dump:
             with open(self.dump, 'wb') as f:
                 pickle.dump((self.last_updated, self.feed), f)
 
     def refresh(self, force=False):
         if force or (self.last_updated + self.max_age < time.time()):
-            logger.info('Refreshing feed')
+            logger.debug('Refreshing feed')
             self._get_feed()
 
     def check_new_episode(self, max_age=3600):
         self.refresh(force=True)
-        release = dt.fromtimestamp(time.mktime(self.latest_episode['published_parsed']))
-        if (dt.now() - release).total_seconds() < max_age:
+        published = dateparser.parse(self.latest_episode['published'])
+        now = dt.now(published.tzinfo)
+        logger.debug(f'Episode age = {(now - published).total_seconds()} seconds, '
+                     f'max_age = {max_age} seconds')
+        if (now - published).total_seconds() < max_age:
             return self.latest_episode
         return False
 
@@ -121,60 +124,57 @@ def markdownv2_escape(text):
     return re.sub(r'([_*\[\]\(\)~`>#+\-=|{}.!\\])', r'\\\1', text)
 
 
-def tg_broadcast(text):
+async def tg_broadcast(text: str, context: ContextTypes.DEFAULT_TYPE):
     """Sends the message `text` to all CHAT_IDS."""
     for chat_id in CHAT_IDS:
-        bot.send_message(chat_id=chat_id,
-                         text=text,
-                         parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(chat_id=chat_id,
+                                       text=text,
+                                       parse_mode=ParseMode.MARKDOWN_V2)
 
 
-def check_podcast(max_age=3600):
+async def check_podcast(context: ContextTypes.DEFAULT_TYPE):
+    max_age = context.job.data.get('max_age', 3600)
     for podcast_feed in podcast_feeds:
+        logger.debug(f'Periodic check for {podcast_feed.title}')
         new_episode = podcast_feed.check_new_episode(max_age=max_age)
         logger.info(f'Checked for new episode: {bool(new_episode)}. '
                     f'Latest episode is: {podcast_feed.latest_episode.title}')
         if new_episode:
-            tg_broadcast(f'*{markdownv2_escape(new_episode.title)}*\n'
-                         f'Eine neue Folge von "{podcast_feed.title}" ist erschienen\\!\n'
-                         f'[Jetzt anhören]({new_episode.link})')
+            title = markdownv2_escape(podcast_feed.title)
+            message = (f'*{markdownv2_escape(new_episode.title)}*\n'
+                       f'Eine neue Folge von "{title}" ist erschienen\\!\n'
+                       f'[Jetzt anhören]({new_episode.link})')
+            await tg_broadcast(message, context)
 
 
-def check_youtube(max_age=3600):
-    latest_episode = yt_feed['items'][0]
-    episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed']))
-    new_episode = (dt.now() - episode_release).total_seconds() < max_age
-    logger.info(f'Checked for new YT video: {new_episode}. '
-                f'Latest video is: {latest_episode.title}')
+async def check_youtube(context: ContextTypes.DEFAULT_TYPE):
+    max_age = context.job.data.get('max_age', 3600)
+    logger.debug(f'Periodic check for {yt_feed.title}')
+    new_episode = yt_feed.check_new_episode(max_age=max_age)
+    logger.info(f'Checked for new episode: {bool(new_episode)}. '
+                f'Latest episode is: {yt_feed.latest_episode.title}')
     if new_episode:
-        tg_broadcast(f'*{markdownv2_escape(latest_episode.title)}*\n'
-                     'Ein neues Youtube Video ist erschienen\\!\n'
-                     f'[Jetzt ansehen]({latest_episode.link})')
+        message = (f'*{markdownv2_escape(new_episode.title)}*\n'
+                   f'Ein neues Youtube Video ist erschienen\\!\n'
+                   f'[Jetzt ansehen]({new_episode.link})')
+        await tg_broadcast(message, context)
 
 
-def feed_loop():
-    while True:
-        check_podcast(3600)
-        if YOUTUBE_FEED:
-            check_youtube(3600)
-        time.sleep(3595)
-
-
-async def latest_episode(update: Update, context: CallbackContext) -> None:
+async def latest_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     latest_episode = podcast_feed.latest_episode
-    episode_release = dt.fromtimestamp(time.mktime(latest_episode['published_parsed'])).date()
+    episode_release = dateparser.parse(latest_episode['published']).date()
     datum = episode_release.strftime('%d\\.%m\\.%Y')
     text = (f'Die letzte Episode ist *{markdownv2_escape(latest_episode.title)}* vom {datum}\\.\n'
             f'[Jetzt anhören]({latest_episode.link})')
     await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
-async def cookie(update: Update, context: CallbackContext) -> None:
+async def cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = random.choice(podcast_feed.episode_titles)
     await update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
 
 
-async def crowsay(update: Update, context: CallbackContext) -> None:
+async def crowsay(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     i = update.message.text.find(' ')
     if i > 0:
         text = update.message.text[i+1:]
@@ -191,7 +191,7 @@ async def crowsay(update: Update, context: CallbackContext) -> None:
                                     quote=False, parse_mode=ParseMode.MARKDOWN_V2)
 
 
-async def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
+async def fuzzy_topic_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     i = update.message.text.find(' ')
     if i > 0:
         search_term = update.message.text[i+1:]
@@ -206,7 +206,7 @@ async def fuzzy_topic_search(update: Update, context: CallbackContext) -> None:
     await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 
-async def topics_of_episode(update: Update, context: CallbackContext) -> None:
+async def topics_of_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     topics_all_episodes = [[
         i.title,
         i.content[0].value.replace("<!-- /wp:paragraph -->",
@@ -253,11 +253,11 @@ async def topics_of_episode(update: Update, context: CallbackContext) -> None:
     await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
 
 
-async def debug_new_episode(update: Update, context: CallbackContext):
-    check_podcast(2592000)
+async def debug_new_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    job_queue.run_once(check_podcast, when=0, data={'max_age': 3600*24*30})
 
 
-bot = Application.builder().token(TOKEN).build()
+bot = Application.builder().token(TOKEN).get_updates_http_version('1.1').http_version('1.1').build()
 
 bot.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
 bot.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
@@ -266,6 +266,11 @@ bot.add_handler(CommandHandler('keks', cookie))
 bot.add_handler(CommandHandler('crowsay', crowsay))
 bot.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
 
+job_queue = bot.job_queue
+job = job_queue.run_repeating(check_podcast, interval=3595, first=5, data={'max_age': 3600})
+if YOUTUBE_FEED:
+    job_yt = job_queue.run_repeating(check_youtube, interval=3595, first=5, data={'max_age': 3600})
+
+
 if __name__ == '__main__':
     bot.run_polling()
-    feed_loop()
