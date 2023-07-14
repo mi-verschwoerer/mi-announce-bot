@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime
 import logging
 import os
 import pickle
@@ -8,7 +9,6 @@ import re
 import sys
 import time
 import traceback
-from datetime import datetime as dt
 from subprocess import run
 
 import dateparser
@@ -56,6 +56,8 @@ class PodcastFeed:
         self.url = url
         self.max_age = max_age
         self.dump = dump
+        self.last_checked = None
+        self._tzinfo = None
 
         if dump and os.path.isfile(dump):
             try:
@@ -82,19 +84,43 @@ class PodcastFeed:
             logger.debug('Refreshing feed')
             self._get_feed()
 
-    def check_new_episode(self, max_age=3600):
+    def check_new_episode(self, initial_check_age=3600, max_age=None):
+        """
+        If a new episode was published since the last check, returns the episode.
+        Returns `False` otherwise.
+
+        :param initial_check_age: Assumed age (in seconds) of the initial check (used for first call)
+        :param max_age: Maximum age (in seconds). Overrides time of previous check.
+        """
+        now = datetime.datetime.now(self.tzinfo)
+
         self.refresh(force=True)
         published = dateparser.parse(self.latest_episode['published'])
-        now = dt.now(published.tzinfo)
-        logger.debug(f'Episode age = {(now - published).total_seconds()} seconds, '
-                     f'max_age = {max_age} seconds')
-        if (now - published).total_seconds() < max_age:
+
+        if max_age:
+            last_checked = now - datetime.timedelta(seconds=max_age)
+        else:
+            delta = datetime.timedelta(seconds=10)
+            last_checked = self.last_checked or (now - delta)
+
+        # save last_checked with an additional 1 second overlap
+        self.last_checked = now - datetime.timedelta(seconds=1)
+
+        logger.info(self.title)
+        if last_checked < published:
             return self.latest_episode
         return False
 
     @property
     def latest_episode(self):
         return self.feed['items'][0]
+
+    @property
+    def tzinfo(self):
+        if self._tzinfo is None:
+            published = dateparser.parse(self.latest_episode['published'])
+            self._tzinfo = published.tzinfo
+        return self._tzinfo
 
     @property
     def episode_titles(self):
@@ -113,7 +139,7 @@ podcast_feed = podcast_feeds[0]  # select main feed
 
 
 if YOUTUBE_FEED:
-    yt_feed = feedparser.parse(YOUTUBE_FEED)
+    yt_feed = PodcastFeed(url=YOUTUBE_FEED, dump=f'{DUMP}_YT')
 
 
 def markdownv2_escape(text):
@@ -132,15 +158,17 @@ async def tg_broadcast(text: str, context: ContextTypes.DEFAULT_TYPE):
                                        parse_mode=ParseMode.MARKDOWN_V2)
 
 
-async def check_podcast(context: ContextTypes.DEFAULT_TYPE):
-    max_age = context.job.data.get('max_age', 3600)
-    for podcast_feed in podcast_feeds:
-        logger.debug(f'Periodic check for {podcast_feed.title}')
-        new_episode = podcast_feed.check_new_episode(max_age=max_age)
+async def check_feeds(context: ContextTypes.DEFAULT_TYPE):
+    max_age = context.job.data.get('max_age', None)
+    initial_check_age = context.job.data.get('initial_check_age', 3600)
+    for feed in podcast_feeds:
+        logger.debug(f'Periodic check for {feed.title}')
+        new_episode = feed.check_new_episode(initial_check_age=initial_check_age,
+                                             max_age=max_age)
         logger.info(f'Checked for new episode: {bool(new_episode)}. '
-                    f'Latest episode is: {podcast_feed.latest_episode.title}')
+                    f'Latest episode is: {feed.latest_episode.title}')
         if new_episode:
-            title = markdownv2_escape(podcast_feed.title)
+            title = markdownv2_escape(feed.title)
             message = (f'*{markdownv2_escape(new_episode.title)}*\n'
                        f'Eine neue Folge von "{title}" ist erschienen\\!\n'
                        f'[Jetzt anhören]({new_episode.link})')
@@ -148,9 +176,11 @@ async def check_podcast(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def check_youtube(context: ContextTypes.DEFAULT_TYPE):
-    max_age = context.job.data.get('max_age', 3600)
+    max_age = context.job.data.get('max_age', None)
+    initial_check_age = context.job.data.get('initial_check_age', 3600)
     logger.debug(f'Periodic check for {yt_feed.title}')
-    new_episode = yt_feed.check_new_episode(max_age=max_age)
+    new_episode = yt_feed.check_new_episode(initial_check_age=initial_check_age,
+                                            max_age=max_age)
     logger.info(f'Checked for new episode: {bool(new_episode)}. '
                 f'Latest episode is: {yt_feed.latest_episode.title}')
     if new_episode:
@@ -254,7 +284,7 @@ async def topics_of_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def debug_new_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    job_queue.run_once(check_podcast, when=0, data={'max_age': 3600*24*30})
+    job_queue.run_once(check_feeds, when=0, data={'max_age': 3600*24*30})
 
 
 bot = Application.builder().token(TOKEN).get_updates_http_version('1.1').http_version('1.1').build()
@@ -267,9 +297,9 @@ bot.add_handler(CommandHandler('crowsay', crowsay))
 bot.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
 
 job_queue = bot.job_queue
-job = job_queue.run_repeating(check_podcast, interval=3595, first=5, data={'max_age': 3600})
+job = job_queue.run_repeating(check_feeds, interval=3600, first=5, data={'initial_check_age': 3600})
 if YOUTUBE_FEED:
-    job_yt = job_queue.run_repeating(check_youtube, interval=3595, first=5, data={'max_age': 3600})
+    job_yt = job_queue.run_repeating(check_youtube, interval=3600, first=120, data={'initial_check_age': 3600})
 
 
 if __name__ == '__main__':
