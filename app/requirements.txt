@@ -3,4 +3,4 @@ feedparser
 fuzzywuzzy
 html2markdown
 python-Levenshtein
-python-telegram-bot
+python-telegram-bot[job-queue]

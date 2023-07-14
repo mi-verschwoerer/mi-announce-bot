@@ -89,7 +89,8 @@ class PodcastFeed:
         If a new episode was published since the last check, returns the episode.
         Returns `False` otherwise.
 
-        :param initial_check_age: Assumed age (in seconds) of the initial check (used for first call)
+        :param initial_check_age: Assumed age (in seconds) of the initial check.
+                                  (used for first call)
         :param max_age: Maximum age (in seconds). Overrides time of previous check.
         """
         now = datetime.datetime.now(self.tzinfo)
@@ -299,7 +300,8 @@ bot.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
 job_queue = bot.job_queue
 job = job_queue.run_repeating(check_feeds, interval=3600, first=5, data={'initial_check_age': 3600})
 if YOUTUBE_FEED:
-    job_yt = job_queue.run_repeating(check_youtube, interval=3600, first=120, data={'initial_check_age': 3600})
+    job_yt = job_queue.run_repeating(check_youtube, interval=3600, first=120,
+                                     data={'initial_check_age': 3600})
 
 
 if __name__ == '__main__':
