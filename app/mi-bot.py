@@ -20,7 +20,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 
-# Read bot token from environment
+# Read config from from environment variables
 TOKEN = os.environ['MIA_TG_TOKEN']
 CHAT_IDS = os.environ['MIA_TG_CHATID'].split(',')
 URL = f"https://api.telegram.org/bot{TOKEN}/"
@@ -28,6 +28,10 @@ DUMP = os.getenv('MIA_DUMP', '')
 DIRNAME = os.path.dirname(os.path.realpath(__file__))
 PODCAST_FEEDS = os.environ['MIA_PODCAST_FEED'].split(',')
 YOUTUBE_FEED = os.getenv('MIA_YOUTUBE_FEED', None)
+DEBUG = os.getenv('MIA_DEBUG', '').lower() in ['1', 'true', 'yes', 'y']
+
+if YOUTUBE_FEED:
+    PODCAST_FEEDS.append(YOUTUBE_FEED)
 
 
 # Setup logging
@@ -38,6 +42,14 @@ log_handler = logging.StreamHandler(sys.stdout)
 log_handler.setFormatter(log_format)
 log_handler.setLevel(logging.INFO)
 logger.addHandler(log_handler)
+
+
+def markdownv2_escape(text):
+    """Escapes all necessary characters and returns valid MarkdownV2 style.
+
+    See: https://core.telegram.org/bots/api#markdownv2-style
+    """
+    return re.sub(r'([_*\[\]\(\)~`>#+\-=|{}.!\\])', r'\\\1', text)
 
 
 class PodcastFeed:
@@ -107,10 +119,22 @@ class PodcastFeed:
         # save last_checked with an additional 1 second overlap
         self.last_checked = now - datetime.timedelta(seconds=1)
 
-        logger.info(self.title)
-        if last_checked < published:
-            return self.latest_episode
-        return False
+        if last_checked > published:
+            # no new episode
+            return False
+
+        # new episode; prepare message
+        feed_title = markdownv2_escape(feed.title)
+        episode_title = markdownv2_escape(self.latest_episode.title)
+        if self.is_youtube:
+            message = (f'*{episode_title}*\n'
+                       f'Eine neue Folge von "{feed_title}" ist erschienen\\!\n'
+                       f'[Jetzt ansehen]({self.latest_episode.link})')
+        else:
+            message = (f'*{episode_title}*\n'
+                       f'Eine neue Folge von "{feed_title}" ist erschienen\\!\n'
+                       f'[Jetzt anhören]({self.latest_episode.link})')
+        return message
 
     @property
     def latest_episode(self):
@@ -132,23 +156,16 @@ class PodcastFeed:
     def title(self):
         return self.feed['feed'].get('title', None)
 
+    @property
+    def is_youtube(self):
+        return 'www.yotube.com/feeds/videos.xml' in self.url
+
 
 podcast_feeds = []
 for i, feed in enumerate(PODCAST_FEEDS):
     podcast_feeds.append(PodcastFeed(url=feed, dump=f'{DUMP}_{i}'))
 podcast_feed = podcast_feeds[0]  # select main feed
-
-
-if YOUTUBE_FEED:
-    yt_feed = PodcastFeed(url=YOUTUBE_FEED, dump=f'{DUMP}_YT')
-
-
-def markdownv2_escape(text):
-    """Escapes all necessary characters and returns valid MarkdownV2 style.
-
-    See: https://core.telegram.org/bots/api#markdownv2-style
-    """
-    return re.sub(r'([_*\[\]\(\)~`>#+\-=|{}.!\\])', r'\\\1', text)
+MINKORREKT = 'Methodisch inkorrekt' in podcast_feed.title
 
 
 async def tg_broadcast(text: str, context: ContextTypes.DEFAULT_TYPE):
@@ -163,41 +180,36 @@ async def check_feeds(context: ContextTypes.DEFAULT_TYPE):
     max_age = context.job.data.get('max_age', None)
     initial_check_age = context.job.data.get('initial_check_age', 3600)
     for feed in podcast_feeds:
-        logger.debug(f'Periodic check for {feed.title}')
-        new_episode = feed.check_new_episode(initial_check_age=initial_check_age,
-                                             max_age=max_age)
-        logger.info(f'Checked for new episode: {bool(new_episode)}. '
+        logger.info(f'Periodic check for {feed.title} ({feed.url})')
+        msg = feed.check_new_episode(initial_check_age=initial_check_age,
+                                     max_age=max_age)
+        logger.info(f'Checked for new episode: {bool(msg)}. '
                     f'Latest episode is: {feed.latest_episode.title}')
-        if new_episode:
-            title = markdownv2_escape(feed.title)
-            message = (f'*{markdownv2_escape(new_episode.title)}*\n'
-                       f'Eine neue Folge von "{title}" ist erschienen\\!\n'
-                       f'[Jetzt anhören]({new_episode.link})')
-            await tg_broadcast(message, context)
+        if msg:
+            await tg_broadcast(msg, context)
 
 
-async def check_youtube(context: ContextTypes.DEFAULT_TYPE):
-    max_age = context.job.data.get('max_age', None)
-    initial_check_age = context.job.data.get('initial_check_age', 3600)
-    logger.debug(f'Periodic check for {yt_feed.title}')
-    new_episode = yt_feed.check_new_episode(initial_check_age=initial_check_age,
-                                            max_age=max_age)
-    logger.info(f'Checked for new episode: {bool(new_episode)}. '
-                f'Latest episode is: {yt_feed.latest_episode.title}')
-    if new_episode:
-        message = (f'*{markdownv2_escape(new_episode.title)}*\n'
-                   f'Ein neues Youtube Video ist erschienen\\!\n'
-                   f'[Jetzt ansehen]({new_episode.link})')
-        await tg_broadcast(message, context)
+async def list_feeds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = 'Verfügbare \\(Podcast\\) Feeds:\n'
+    for i, feed in enumerate(podcast_feeds):
+        title = markdownv2_escape(feed.title)
+        link = feed.feed['feed']['link']
+        msg += f'{i+1} \\- {title} \\([Webseite]({link}) [Feed]({feed.url})\\)\n'
+    await update.message.reply_text(text=msg,
+                                    quote=False,
+                                    parse_mode=ParseMode.MARKDOWN_V2)
 
 
 async def latest_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     latest_episode = podcast_feed.latest_episode
     episode_release = dateparser.parse(latest_episode['published']).date()
     datum = episode_release.strftime('%d\\.%m\\.%Y')
-    text = (f'Die letzte Episode ist *{markdownv2_escape(latest_episode.title)}* vom {datum}\\.\n'
-            f'[Jetzt anhören]({latest_episode.link})')
-    await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN_V2)
+    title = markdownv2_escape(latest_episode.title)
+    msg = (f'Die letzte Episode ist *{title}* vom {datum}\\.\n'
+           f'[Jetzt anhören]({latest_episode.link})')
+    await update.message.reply_text(text=msg,
+                                    quote=False,
+                                    parse_mode=ParseMode.MARKDOWN_V2)
 
 
 async def cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -228,8 +240,8 @@ async def fuzzy_topic_search(update: Update, context: ContextTypes.DEFAULT_TYPE)
         search_term = update.message.text[i+1:]
     topics_all_episodes = [[
         i.title,
-        i.content[0].value.replace("<!-- /wp:paragraph -->",
-                                   "").replace("<!-- wp:paragraph -->", "")
+        i.content[0].value.replace('<!-- /wp:paragraph -->',
+                                   '').replace('<!-- wp:paragraph -->', '')
     ] for i in podcast_feed.feed.entries]
     ratios = process.extract(search_term, topics_all_episodes)
     episodes = [ratio[0][0] for ratio in ratios[:3]]
@@ -240,8 +252,8 @@ async def fuzzy_topic_search(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def topics_of_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     topics_all_episodes = [[
         i.title,
-        i.content[0].value.replace("<!-- /wp:paragraph -->",
-                                   "").replace("<!-- wp:paragraph -->", "")
+        i.content[0].value.replace('<!-- /wp:paragraph -->',
+                                   '').replace('<!-- wp:paragraph -->', '')
     ] for i in podcast_feed.feed.entries]
     i = update.message.text.find(' ')
     if i > 0:
@@ -254,54 +266,62 @@ async def topics_of_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             index_number = len(topics_all_episodes)-1-episode_number
     else:
-        print("Es gab einen Fehler mit der Episodennummer.\n"
-              "Stelle sicher, dass du eine Zahl angegeben hast!")
+        logger.error('Es gab einen Fehler mit der Episodennummer.\n'
+                     'Stelle sicher, dass du eine Zahl angegeben hast!')
     # If someone asks for episode number 12, they will automatically retrieve
     # episode 12b as well since they basically belong together
     if episode_number == 12:
         episode_topics = topics_all_episodes[index_number-1:index_number+1][::-1]
-        episode_topics = ["".join(tops) for tops in episode_topics]
+        episode_topics = [''.join(tops) for tops in episode_topics]
     else:
         episode_topics = topics_all_episodes[index_number]
-    episode_topics = " ".join(episode_topics)
-    topic_start_points = [m.start() for m in re.finditer("Thema [1, 2, 3, 4]", episode_topics)]
+    episode_topics = ' '.join(episode_topics)
+    topic_start_points = [m.start() for m in re.finditer('Thema [1, 2, 3, 4]', episode_topics)]
     topic_end_points = []
     for start in topic_start_points:
         topic_end_points.append(start + episode_topics[start:].find('\n'))
     if 0 == len(topic_start_points):
-        return ("Themen nicht gefunden.\n"
-                "Wahrscheinlich Nobelpreis/Jahresrückblick-Folge")
+        return ('Themen nicht gefunden.\n'
+                'Wahrscheinlich Nobelpreis/Jahresrückblick-Folge')
     topics = [
         html2markdown.convert(episode_topics[start:end])
         for start, end in zip(topic_start_points, topic_end_points)
     ]
-    topics_text = "\n".join(topics)
+    topics_text = '\n'.join(topics)
     if episode_number == 12:
-        episode_title = "12a Du wirst wieder angerufen! & 12b Previously (on) Lost"
+        episode_title = '12a Du wirst wieder angerufen! & 12b Previously (on) Lost'
     else:
         episode_title = topics_all_episodes[index_number][0]
-    text = f"Die Themen von Folge {episode_title} sind:\n{topics_text}"
-    await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+    text = f'Die Themen von Folge {episode_title} sind:\n{topics_text}'
+    await update.message.reply_text(text=text,
+                                    quote=False,
+                                    parse_mode=ParseMode.MARKDOWN)
 
 
 async def debug_new_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     job_queue.run_once(check_feeds, when=0, data={'max_age': 3600*24*30})
 
 
-bot = Application.builder().token(TOKEN).get_updates_http_version('1.1').http_version('1.1').build()
+bot = Application.builder().token(TOKEN)\
+    .get_updates_http_version('1.1').http_version('1.1').build()
 
 bot.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
-bot.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
+bot.add_handler(CommandHandler('feeds', list_feeds))
 bot.add_handler(CommandHandler('letzteEpisode', latest_episode))
-bot.add_handler(CommandHandler('keks', cookie))
-bot.add_handler(CommandHandler('crowsay', crowsay))
-bot.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
+
+if MINKORREKT:
+    bot.add_handler(CommandHandler('keks', cookie))
+    bot.add_handler(CommandHandler('crowsay', crowsay))
+    bot.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
+
+if DEBUG:
+    bot.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
 
 job_queue = bot.job_queue
-job = job_queue.run_repeating(check_feeds, interval=3600, first=5, data={'initial_check_age': 3600})
-if YOUTUBE_FEED:
-    job_yt = job_queue.run_repeating(check_youtube, interval=3600, first=120,
-                                     data={'initial_check_age': 3600})
+job = job_queue.run_repeating(callback=check_feeds,
+                              interval=3600,
+                              first=5,
+                              data={'initial_check_age': 3600})
 
 
 if __name__ == '__main__':
