@@ -256,8 +256,8 @@ async def fuzzy_topic_search(update: Update, context: ContextTypes.DEFAULT_TYPE)
     ifeed, search_term = parse_input(update.message.text)
     if not search_term:
         help_message = ('Zur Stichwortsuche verwende:\n'
-                        '`\\findeStichwort FeedNummer Stichwort`\n'
-                        'Alle Feed Nummern werden von `\\feeds` aufgelistet.')
+                        '`/findeStichwort FeedNummer Stichwort`\n'
+                        'Alle Feed Nummern werden von /feeds aufgelistet.')
         await update.message.reply_text(text=help_message,
                                         quote=False,
                                         parse_mode=ParseMode.MARKDOWN)
