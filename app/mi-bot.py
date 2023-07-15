@@ -168,6 +168,21 @@ podcast_feed = podcast_feeds[0]  # select main feed
 MINKORREKT = 'Methodisch inkorrekt' in podcast_feed.title
 
 
+def parse_input(text: str):
+    """Splits the input message to extract the selected feed index.
+    Returns a tuple `(feed_index: int, arg: str)`.
+    """
+    match = re.match(r'\/[\w@]+ (\d+|)(.*)', text)
+    if not match:
+        return 0, ''
+    if match.group(1):
+        ifeed = min(int(match.group(1)), len(podcast_feeds))
+    else:
+        ifeed = 1
+    arg = match.group(2).strip()
+    return ifeed - 1, arg
+
+
 async def tg_broadcast(text: str, context: ContextTypes.DEFAULT_TYPE):
     """Sends the message `text` to all CHAT_IDS."""
     for chat_id in CHAT_IDS:
@@ -201,7 +216,9 @@ async def list_feeds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def latest_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    latest_episode = podcast_feed.latest_episode
+    ifeed, _ = parse_input(update.message.text)
+    feed = podcast_feeds[ifeed]
+    latest_episode = feed.latest_episode
     episode_release = dateparser.parse(latest_episode['published']).date()
     datum = episode_release.strftime('%d\\.%m\\.%Y')
     title = markdownv2_escape(latest_episode.title)
@@ -214,7 +231,7 @@ async def latest_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = random.choice(podcast_feed.episode_titles)
-    await update.message.reply_text(f'\U0001F36A {text} \U0001F36A', quote=False)
+    await update.message.reply_text(text=f'\U0001F36A {text} \U0001F36A', quote=False)
 
 
 async def crowsay(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -230,23 +247,33 @@ async def crowsay(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             capture_output=True, encoding='utf-8')
     text = r.stdout
     text = markdownv2_escape(text)
-    await update.message.reply_text(f'```\n{text}\n```',
-                                    quote=False, parse_mode=ParseMode.MARKDOWN_V2)
+    await update.message.reply_text(text=f'```\n{text}\n```',
+                                    quote=False,
+                                    parse_mode=ParseMode.MARKDOWN_V2)
 
 
 async def fuzzy_topic_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    i = update.message.text.find(' ')
-    if i > 0:
-        search_term = update.message.text[i+1:]
+    ifeed, search_term = parse_input(update.message.text)
+    if not search_term:
+        help_message = ('Zur Stichwortsuche verwende:\n'
+                        '`\\findeStichwort FeedNummer Stichwort`\n'
+                        'Alle Feed Nummern werden von `\\feeds` aufgelistet.')
+        await update.message.reply_text(text=help_message,
+                                        quote=False,
+                                        parse_mode=ParseMode.MARKDOWN)
+        return
+    feed = podcast_feeds[ifeed]
     topics_all_episodes = [[
         i.title,
         i.content[0].value.replace('<!-- /wp:paragraph -->',
                                    '').replace('<!-- wp:paragraph -->', '')
-    ] for i in podcast_feed.feed.entries]
+    ] for i in feed.feed.entries]
     ratios = process.extract(search_term, topics_all_episodes)
     episodes = [ratio[0][0] for ratio in ratios[:3]]
-    text = "Die besten 3 Treffer sind die Episoden:\n" + "\n".join(episodes)
-    await update.message.reply_text(text, quote=False, parse_mode=ParseMode.MARKDOWN)
+    text = 'Die besten 3 Treffer sind die Episoden:\n' + '\n'.join(episodes)
+    await update.message.reply_text(text=text,
+                                    quote=False,
+                                    parse_mode=ParseMode.MARKDOWN)
 
 
 async def topics_of_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -302,22 +329,22 @@ async def debug_new_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     job_queue.run_once(check_feeds, when=0, data={'max_age': 3600*24*30})
 
 
-bot = Application.builder().token(TOKEN)\
+application = Application.builder().token(TOKEN)\
     .get_updates_http_version('1.1').http_version('1.1').build()
 
-bot.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
-bot.add_handler(CommandHandler('feeds', list_feeds))
-bot.add_handler(CommandHandler('letzteEpisode', latest_episode))
+application.add_handler(CommandHandler('findeStichwort', fuzzy_topic_search))
+application.add_handler(CommandHandler('feeds', list_feeds))
+application.add_handler(CommandHandler('letzteEpisode', latest_episode))
 
 if MINKORREKT:
-    bot.add_handler(CommandHandler('keks', cookie))
-    bot.add_handler(CommandHandler('crowsay', crowsay))
-    bot.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
+    application.add_handler(CommandHandler('keks', cookie))
+    application.add_handler(CommandHandler('crowsay', crowsay))
+    application.add_handler(CommandHandler('themenVonFolgeX', topics_of_episode))
 
 if DEBUG:
-    bot.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
+    application.add_handler(CommandHandler('debugNewEpisode', debug_new_episode))
 
-job_queue = bot.job_queue
+job_queue = application.job_queue
 job = job_queue.run_repeating(callback=check_feeds,
                               interval=3600,
                               first=5,
@@ -325,4 +352,4 @@ job = job_queue.run_repeating(callback=check_feeds,
 
 
 if __name__ == '__main__':
-    bot.run_polling()
+    application.run_polling()
