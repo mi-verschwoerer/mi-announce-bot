@@ -124,7 +124,7 @@ class PodcastFeed:
             return False
 
         # new episode; prepare message
-        feed_title = markdownv2_escape(feed.title)
+        feed_title = markdownv2_escape(self.title)
         episode_title = markdownv2_escape(self.latest_episode.title)
         if self.is_youtube:
             message = (f'*{episode_title}*\n'
@@ -326,7 +326,12 @@ async def topics_of_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def debug_new_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    job_queue.run_once(check_feeds, when=0, data={'max_age': 3600*24*30})
+    match = re.match(r'\/[\w@]+ (\d+)', update.message.text)
+    if match:
+        max_age = int(match.group(1))
+    else:
+        max_age = 3600*24*30
+    job_queue.run_once(check_feeds, when=0, data={'max_age': max_age})
 
 
 application = Application.builder().token(TOKEN)\
