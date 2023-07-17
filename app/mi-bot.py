@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 from subprocess import run
+from typing import List
 
 import dateparser
 import feedparser
@@ -96,7 +97,37 @@ class PodcastFeed:
             logger.debug('Refreshing feed')
             self._get_feed()
 
-    def check_new_episode(self, initial_check_age=3600, max_age=None):
+    def build_message(self, episode_index: int = 0, new: bool = True) -> str:
+        """Build the message informing about the episode.
+
+        :param episode_index: Index of the desired episode.
+        :param new: Whether to annouce as a new episode.
+        """
+
+        episode = self.feed['items'][episode_index]
+        feed_title = markdownv2_escape(self.title)
+        episode_title = markdownv2_escape(episode.title)
+        web_link = episode.link
+        dl_link = self.get_download_link()
+        verb = 'ansehen' if self.is_youtube else 'anhören'
+
+        if new:
+            message = (f'*{episode_title}*\n'
+                       f'Eine neue Folge von "{feed_title}" ist erschienen\\!\n')
+        else:
+            episode_release = dateparser.parse(episode['published']).date()
+            datum = episode_release.strftime('%d\\.%m\\.%Y')
+            message = (f'*{feed_title}*\n'
+                       f'Die letzte Episode ist *{episode_title}* vom {datum}\\.\n')
+
+        if dl_link:
+            message += f'Jetzt {verb}: [Webseite]({web_link}) [Download]({dl_link})'
+        else:
+            message += f'[Jetzt {verb}]({web_link})'
+
+        return message
+
+    def check_new_episode(self, initial_check_age: int = 3600, max_age: int = None):
         """
         If a new episode was published since the last check, returns the episode.
         Returns `False` otherwise.
@@ -123,22 +154,32 @@ class PodcastFeed:
             # no new episode
             return False
 
-        # new episode; prepare message
-        feed_title = markdownv2_escape(self.title)
-        episode_title = markdownv2_escape(self.latest_episode.title)
-        if self.is_youtube:
-            message = (f'*{episode_title}*\n'
-                       f'Eine neue Folge von "{feed_title}" ist erschienen\\!\n'
-                       f'[Jetzt ansehen]({self.latest_episode.link})')
-        else:
-            message = (f'*{episode_title}*\n'
-                       f'Eine neue Folge von "{feed_title}" ist erschienen\\!\n'
-                       f'[Jetzt anhören]({self.latest_episode.link})')
-        return message
+        return self.build_message()
+
+    @property
+    def episode_titles(self) -> List[str]:
+        self.refresh()
+        return [i.title for i in self.feed['items']]
+
+    def get_download_link(self, episode_index: int = 0) -> str:
+        """Returns the file download link for the requested episode."""
+        episode = self.feed['items'][episode_index]
+        for link in episode['links']:
+            if link['rel'] == 'enclosure':
+                return link['href']
+        return ''
+
+    @property
+    def is_youtube(self) -> bool:
+        return 'www.youtube.com/feeds/videos.xml' in self.url
 
     @property
     def latest_episode(self):
         return self.feed['items'][0]
+
+    @property
+    def title(self):
+        return self.feed['feed'].get('title', None)
 
     @property
     def tzinfo(self):
@@ -146,19 +187,6 @@ class PodcastFeed:
             published = dateparser.parse(self.latest_episode['published'])
             self._tzinfo = published.tzinfo
         return self._tzinfo
-
-    @property
-    def episode_titles(self):
-        self.refresh()
-        return [i.title for i in self.feed['items']]
-
-    @property
-    def title(self):
-        return self.feed['feed'].get('title', None)
-
-    @property
-    def is_youtube(self):
-        return 'www.yotube.com/feeds/videos.xml' in self.url
 
 
 podcast_feeds = []
@@ -217,13 +245,7 @@ async def list_feeds(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def latest_episode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ifeed, _ = parse_input(update.message.text)
-    feed = podcast_feeds[ifeed]
-    latest_episode = feed.latest_episode
-    episode_release = dateparser.parse(latest_episode['published']).date()
-    datum = episode_release.strftime('%d\\.%m\\.%Y')
-    title = markdownv2_escape(latest_episode.title)
-    msg = (f'Die letzte Episode ist *{title}* vom {datum}\\.\n'
-           f'[Jetzt anhören]({latest_episode.link})')
+    msg = podcast_feeds[ifeed].build_message(new=False)
     await update.message.reply_text(text=msg,
                                     quote=False,
                                     parse_mode=ParseMode.MARKDOWN_V2)
