@@ -160,7 +160,6 @@ class PodcastFeed:
 
         return False
 
-
     @property
     def episode_titles(self) -> List[str]:
         self.refresh()
