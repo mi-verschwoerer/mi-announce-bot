@@ -69,7 +69,7 @@ class PodcastFeed:
         self.url = url
         self.max_age = max_age
         self.dump = dump
-        self.last_checked = None
+        self._last_checked_title = None
         self._tzinfo = None
 
         if dump and os.path.isfile(dump):
@@ -132,29 +132,34 @@ class PodcastFeed:
         If a new episode was published since the last check, returns the episode.
         Returns `False` otherwise.
 
-        :param initial_check_age: Assumed age (in seconds) of the initial check.
-                                  (used for first call)
-        :param max_age: Maximum age (in seconds). Overrides time of previous check.
+        :param initial_check_age: Max age (in seconds) for the initial check.
+        :param max_age: Forces (re)advertisement.
         """
-        now = datetime.datetime.now(self.tzinfo)
 
         self.refresh(force=True)
+        found_new_episode = False
+        now = datetime.datetime.now(self.tzinfo)
+        initial_check_age = datetime.timedelta(seconds=initial_check_age)
         published = dateparser.parse(self.latest_episode['published'])
 
-        if max_age:
-            last_checked = now - datetime.timedelta(seconds=max_age)
+        if self._last_checked_title is None:
+            # First check, use initial_check_age
+            found_new_episode |= published > (now - initial_check_age)
         else:
-            delta = datetime.timedelta(seconds=10)
-            last_checked = self.last_checked or (now - delta)
+            # Compare current title against stored title
+            found_new_episode |= self._last_checked_title != self.latest_episode.title
 
-        # save last_checked with an additional 1 second overlap
-        self.last_checked = now - datetime.timedelta(seconds=1)
+        if max_age:
+            # Force (re)advertisement if not older than max_age
+            max_age = datetime.timedelta(seconds=max_age)
+            found_new_episode |= published > (now - max_age)
 
-        if last_checked > published:
-            # no new episode
-            return False
+        if found_new_episode:
+            self._last_checked_title = self.latest_episode.title
+            return self.build_message()
 
-        return self.build_message()
+        return False
+
 
     @property
     def episode_titles(self) -> List[str]:
