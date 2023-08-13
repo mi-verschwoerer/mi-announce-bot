@@ -154,8 +154,9 @@ class PodcastFeed:
             max_age = datetime.timedelta(seconds=max_age)
             found_new_episode |= published > (now - max_age)
 
+        self._last_checked_title = self.latest_episode.title
+
         if found_new_episode:
-            self._last_checked_title = self.latest_episode.title
             return self.build_message()
 
         return False
